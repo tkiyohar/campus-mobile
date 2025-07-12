@@ -50,21 +50,22 @@ class _WebViewContainerState extends State<WebViewContainer>
   late UserDataProvider _userDataProvider;
 
   /// SERVICES
-  WebViewController? _webViewController;
+  late final WebViewController _webViewController;
 
   @override
   void initState() {
     super.initState();
     hide = () => Provider.of<CardsDataProvider>(context, listen: false)
         .toggleCard(widget.cardId);
+    _webViewController = WebViewController();
   }
 
+  // Using didChangeDependencies for controller setup that depends on context/providers
   @override
-  Widget build(BuildContext context) {
-    super.build(context);
-    active = Provider.of<CardsDataProvider>(context).cardStates[widget.cardId]!;
+  void didChangeDependencies() {
+    super.didChangeDependencies();
 
-    // check if this webCard needs an auth token
+    // Initialize webCardUrl
     if (widget.requireAuth) {
       _userDataProvider = Provider.of<UserDataProvider>(context);
       webCardUrl = widget.initialUrl +
@@ -73,7 +74,84 @@ class _WebViewContainerState extends State<WebViewContainer>
       webCardUrl = widget.initialUrl;
     }
 
-    checkWebURL();
+    _webViewController
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onProgress: (int progress) {
+            // print('WebView is loading (progress : $progress%)');
+          },
+          onPageStarted: (String url) {
+            // print('Page started loading: $url');
+          },
+          onPageFinished: (String url) {
+            // print('Page finished loading: $url');
+            // Call checkWebURL here to ensure the correct URL is loaded after redirects or initial load.
+            // This was previously implicitly handled by checkWebURL in build.
+            checkWebURL();
+          },
+          onHttpError: (HttpResponseError error) {
+            // print('Http error: ${error.response?.statusCode}');
+          },
+          onWebResourceError: (WebResourceError error) {
+            // print('Page resource error: ${error.description}');
+          },
+        ),
+      )
+      ..addJavaScriptChannel(
+        'OpenLink',
+        onMessageReceived: (JavaScriptMessage message) {
+          openLink(message.message);
+        },
+      )
+      ..addJavaScriptChannel(
+        'SetHeight',
+        onMessageReceived: (JavaScriptMessage message) {
+          setState(() {
+            _contentHeight =
+                validateHeight(context, double.tryParse(message.message));
+          });
+        },
+      )
+      ..addJavaScriptChannel(
+        'MapSearch',
+        onMessageReceived: (JavaScriptMessage message) {
+          Provider.of<MapsDataProvider>(context, listen: false)
+              .searchBarController
+              .text = message.message;
+          Provider.of<MapsDataProvider>(context, listen: false).fetchLocations();
+          Provider.of<BottomNavigationBarProvider>(context, listen: false)
+              .currentIndex = NavigatorConstants.MapTab;
+          Provider.of<CustomAppBar>(context, listen: false).changeTitle("Maps");
+        },
+      )
+      ..addJavaScriptChannel(
+        'RefreshToken',
+        onMessageReceived: (JavaScriptMessage message) async {
+          if (!Provider.of<UserDataProvider>(context, listen: false).isLoggedIn) {
+            if (await _userDataProvider.silentLogin()) {
+              _webViewController.reload();
+            }
+          }
+        },
+      )
+      ..addJavaScriptChannel(
+        'Redirect',
+        onMessageReceived: (JavaScriptMessage message) async {
+          webCardUrl = message.message;
+          _webViewController.loadRequest(Uri.parse(message.message));
+        },
+      )
+      ..loadRequest(Uri.parse(webCardUrl)); // Initial load
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    active = Provider.of<CardsDataProvider>(context).cardStates[widget.cardId]!;
+
+    // webCardUrl is now initialized in didChangeDependencies
+    // checkWebURL(); // Called in onPageFinished and menu actions now
 
     if (active) {
       return Card(
@@ -121,7 +199,7 @@ class _WebViewContainerState extends State<WebViewContainer>
 
   // builds the actual webview widget
   Widget buildBody(context) {
-    print('webview_container:buildBody: ' + webCardUrl);
+    // print('webview_container:buildBody with: ' + webCardUrl); // webCardUrl is now available
     return ClipRRect(
       borderRadius: BorderRadius.only(
         bottomLeft: Radius.circular(12.0),
@@ -129,21 +207,7 @@ class _WebViewContainerState extends State<WebViewContainer>
       ),
       child: Container(
         height: _contentHeight,
-        child: WebView(
-          javascriptMode: JavascriptMode.unrestricted,
-          initialUrl: webCardUrl,
-          onWebViewCreated: (controller) {
-            _webViewController = controller;
-          },
-          navigationDelegate: null,
-          javascriptChannels: <JavascriptChannel>[
-            _linksChannel(context),
-            _heightChannel(context),
-            _mapChannel(context),
-            _refreshTokenChannel(context),
-            _permanentRedirect(context)
-          ].toSet(),
-        ),
+        child: WebViewWidget(controller: _webViewController),
       ),
     );
   }
@@ -155,14 +219,14 @@ class _WebViewContainerState extends State<WebViewContainer>
       mainAxisSize: MainAxisSize.min,
       children: [
         buildMenuOptions({
-          CardMenuOptionConstants.reloadCard: _webViewController?.reload,
+          CardMenuOptionConstants.reloadCard: _webViewController.reload,
           CardMenuOptionConstants.hideCard: hide,
         }),
       ],
     );
   }
 
-  Widget buildMenuOptions(Map<String, Function?> menuOptions) {
+  Widget buildMenuOptions(Map<String, Function> menuOptions) {
     List<DropdownMenuItem<String>> menu = [];
     menuOptions.forEach((menuOption, func) {
       Widget item = DropdownMenuItem<String>(
@@ -192,7 +256,7 @@ class _WebViewContainerState extends State<WebViewContainer>
   void onMenuItemPressed(String? selectedMenuItem) {
     switch (selectedMenuItem) {
       case CardMenuOptionConstants.reloadCard:
-        _webViewController?.loadUrl(webCardUrl);
+        _webViewController.loadRequest(Uri.parse(webCardUrl));
         resetCardHeight(widget.cardId);
         break;
       case CardMenuOptionConstants.hideCard:
@@ -204,77 +268,12 @@ class _WebViewContainerState extends State<WebViewContainer>
     }
   }
 
-  // channel for opening links
-  JavascriptChannel _linksChannel(BuildContext context) {
-    return JavascriptChannel(
-      name: 'OpenLink',
-      onMessageReceived: (JavascriptMessage message) {
-        openLink(message.message);
-      },
-    );
-  }
-
-  // channel for dynamically setting the height of the card
-  JavascriptChannel _heightChannel(BuildContext context) {
-    return JavascriptChannel(
-      name: 'SetHeight',
-      onMessageReceived: (JavascriptMessage message) {
-        setState(() {
-          _contentHeight =
-              validateHeight(context, double.tryParse(message.message));
-        });
-      },
-    );
-  }
-
-  // channel for performing a map search based on given query
-  JavascriptChannel _mapChannel(BuildContext context) {
-    return JavascriptChannel(
-      name: 'MapSearch',
-      onMessageReceived: (JavascriptMessage message) {
-        // navigate to map and search with message.message
-        Provider.of<MapsDataProvider>(context, listen: false)
-            .searchBarController
-            .text = message.message;
-        Provider.of<MapsDataProvider>(context, listen: false).fetchLocations();
-        Provider.of<BottomNavigationBarProvider>(context, listen: false)
-            .currentIndex = NavigatorConstants.MapTab;
-        Provider.of<CustomAppBar>(context, listen: false).changeTitle("Maps");
-        // Navigator.pushNamed(context, RoutePaths.Map);
-      },
-    );
-  }
-
-  JavascriptChannel _refreshTokenChannel(BuildContext context) {
-    return JavascriptChannel(
-      name: 'RefreshToken',
-      onMessageReceived: (JavascriptMessage message) async {
-        if (!Provider.of<UserDataProvider>(context, listen: false).isLoggedIn) {
-          if (await _userDataProvider.silentLogin()) {
-            _webViewController?.reload();
-          }
-        }
-      },
-    );
-  }
-
-  // javascript channel for redirecting the user to a new webcard URL
-  JavascriptChannel _permanentRedirect(BuildContext context) {
-    return JavascriptChannel(
-      name: 'Redirect',
-      onMessageReceived: (JavascriptMessage message) async {
-        webCardUrl = message.message;
-        _webViewController!.loadUrl(message.message);
-      },
-    );
-  }
-
   // this function checks to see if the current url of the state is different
   // to the webViewController's url, and loads in the new url if so
   void checkWebURL() async {
-    String? currentUrl = await _webViewController?.currentUrl();
-    if (_webViewController != null && webCardUrl != currentUrl) {
-      _webViewController?.loadUrl(webCardUrl);
+    String? currentUrl = await _webViewController.currentUrl();
+    if (webCardUrl != currentUrl) {
+      _webViewController.loadRequest(Uri.parse(webCardUrl));
     }
   }
 

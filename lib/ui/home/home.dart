@@ -29,7 +29,7 @@ import 'package:campus_mobile_experimental/ui/student_id/student_id_card.dart';
 import 'package:campus_mobile_experimental/ui/wifi/wifi_card.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:uni_links2/uni_links.dart';
+import 'package:app_links/app_links.dart';
 import 'package:flutter/rendering.dart';
 
 //--- code to track size changes of dynamic web card widget content ---
@@ -123,30 +123,32 @@ class _HomeState extends State<Home> {
     // deep links are received by this method
     // the specific host needs to be added in AndroidManifest.xml and Info.plist
     // currently, this method handles executing custom map query
-    late StreamSubscription _sub;
+    final _appLinks = AppLinks();
+    StreamSubscription? _sub; // Make it nullable if you might not assign it
 
-    // Used to handle links on cold app start
-    String? initialLink = await getInitialLink();
-    if (!executedInitialDeeplinkQuery &&
-        initialLink != null &&
-        initialLink.contains("deeplinking.searchmap")) {
-      var uri = Uri.dataFromString(initialLink);
-      var query = uri.queryParameters['query']!;
-      // redirect query to maps tab and search with query
-      executeQuery(query);
-    }
+    // Listen to all incoming links (initial and subsequent)
+    _sub = _appLinks.uriLinkStream.listen((Uri? uri) async {
+      if (uri != null && uri.toString().contains("deeplinking.searchmap")) {
+        // Check executedInitialDeeplinkQuery for the initial link case
+        // For subsequent links, this flag might not be as critical, but
+        // the original logic had it for the initialLink part.
+        // If app_links sends initial link via stream, this check helps.
+        if (uri.toString().contains("deeplinking.searchmap")) {
+          // Potentially add !executedInitialDeeplinkQuery if you only want the *very first* one
+          // however, the original code would execute if *any* link contained searchmap.
+          var query = uri.queryParameters['query']!;
+          // redirect query to maps tab and search with query
+          executeQuery(query);
 
-    // used to handle links while app is in foreground/background
-    _sub = linkStream.listen((String? link) async {
-      // handling for map query
-      if (link!.contains("deeplinking.searchmap")) {
-        var uri = Uri.dataFromString(link);
-        var query = uri.queryParameters['query']!;
-        // redirect query to maps tab and search with query
-        executeQuery(query);
-        // received deeplink, cancel stream to prevent memory leaks
-        _sub.cancel();
+          // If this is meant to be a one-time consumption for a specific link,
+          // then canceling makes sense. Otherwise, keep listening.
+          // The original code cancelled after the first 'searchmap' link.
+          _sub?.cancel();
+        }
       }
+    }, onError: (err) {
+      // Handle errors if needed
+      print('Error listening to uni_links: $err');
     });
   }
 

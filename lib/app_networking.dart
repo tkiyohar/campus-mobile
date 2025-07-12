@@ -22,39 +22,53 @@ class NetworkHelper {
 
   static Future<dynamic> fetchData(String url) async {
     Dio dio = new Dio();
-    dio.options.connectTimeout = DEFAULT_TIMEOUT;
-    dio.options.receiveTimeout = DEFAULT_TIMEOUT;
+    dio.options.connectTimeout = Duration(milliseconds: DEFAULT_TIMEOUT);
+    dio.options.receiveTimeout = Duration(milliseconds: DEFAULT_TIMEOUT);
     dio.options.responseType = ResponseType.plain;
-    final _response = await dio.get(url);
-
-    if (_response.statusCode == 200) {
-      // If server returns an OK response, return the body
-      return _response.data;
-    } else {
-      ///TODO: log this as a bug because the response was bad
-      // If that response was not OK, throw an error.
-      throw Exception('Failed to fetch data: ' + _response.data);
+    try {
+      final _response = await dio.get(url);
+      if (_response.statusCode == 200) {
+        return _response.data;
+      } else {
+        String message = _response.data is Map ? (_response.data['message'] ?? _response.statusMessage ?? 'unknown error') : (_response.statusMessage ?? 'unknown error');
+        throw Exception('Failed to fetch data: HTTP ${_response.statusCode}: $message');
+      }
+    } on DioException catch (e) {
+      if (e.response != null) {
+        String message = e.response!.data is Map ? (e.response!.data['message'] ?? e.response!.statusMessage ?? 'Server error') : (e.response!.statusMessage ?? 'Server error');
+        throw Exception('Failed to fetch data: HTTP ${e.response!.statusCode}: $message');
+      } else {
+        throw Exception('Failed to fetch data: ${e.message ?? "Network error"}');
+      }
+    } catch (e) {
+      throw Exception('Failed to fetch data: Unexpected error: $e');
     }
   }
 
   static Future<dynamic> authorizedFetch(
       String url, Map<String, String> headers) async {
     Dio dio = new Dio();
-    dio.options.connectTimeout = DEFAULT_TIMEOUT;
-    dio.options.receiveTimeout = DEFAULT_TIMEOUT;
+    dio.options.connectTimeout = Duration(milliseconds: DEFAULT_TIMEOUT);
+    dio.options.receiveTimeout = Duration(milliseconds: DEFAULT_TIMEOUT);
     dio.options.responseType = ResponseType.plain;
     dio.options.headers = headers;
-    final _response = await dio.get(
-      url,
-    );
-    if (_response.statusCode == 200) {
-      // If server returns an OK response, return the body
-      return _response.data;
-    } else {
-      ///TODO: log this as a bug because the response was bad
-      // If that response was not OK, throw an error.
-
-      throw Exception('Failed to fetch data: ' + _response.data);
+    try {
+      final _response = await dio.get(url);
+      if (_response.statusCode == 200) {
+        return _response.data;
+      } else {
+        String message = _response.data is Map ? (_response.data['message'] ?? _response.statusMessage ?? 'unknown error') : (_response.statusMessage ?? 'unknown error');
+        throw Exception('Failed to fetch data: HTTP ${_response.statusCode}: $message');
+      }
+    } on DioException catch (e) {
+      if (e.response != null) {
+        String message = e.response!.data is Map ? (e.response!.data['message'] ?? e.response!.statusMessage ?? 'Server error') : (e.response!.statusMessage ?? 'Server error');
+        throw Exception('Failed to fetch data: HTTP ${e.response!.statusCode}: $message');
+      } else {
+        throw Exception('Failed to fetch data: ${e.message ?? "Network error"}');
+      }
+    } catch (e) {
+      throw Exception('Failed to fetch data: Unexpected error: $e');
     }
   }
 
@@ -116,85 +130,117 @@ class NetworkHelper {
   static Future<dynamic> authorizedPost(
       String url, Map<String, String>? headers, dynamic body) async {
     Dio dio = new Dio();
-    dio.options.connectTimeout = DEFAULT_TIMEOUT;
-    dio.options.receiveTimeout = DEFAULT_TIMEOUT;
+    dio.options.connectTimeout = Duration(milliseconds: DEFAULT_TIMEOUT);
+    dio.options.receiveTimeout = Duration(milliseconds: DEFAULT_TIMEOUT);
     dio.options.headers = headers;
-    final _response = await dio.post(url, data: body);
-    if (_response.statusCode == 200 || _response.statusCode == 201) {
-      // If server returns an OK response, return the body
-      return _response.data;
-    } else if (_response.statusCode == 400) {
-      // If that response was not OK, throw an error.
-      String message = _response.data['message'] ?? '';
-      throw Exception(ErrorConstants.authorizedPostErrors + message);
-    } else if (_response.statusCode == 401) {
-      throw Exception(ErrorConstants.authorizedPostErrors +
-          ErrorConstants.invalidBearerToken);
-    } else if (_response.statusCode == 404) {
-      String message = _response.data['message'] ?? '';
-      throw Exception(ErrorConstants.authorizedPostErrors + message);
-    } else if (_response.statusCode == 500) {
-      String message = _response.data['message'] ?? '';
-      throw Exception(ErrorConstants.authorizedPostErrors + message);
-    } else if (_response.statusCode == 409) {
-      String message = _response.data['message'] ?? '';
-      throw Exception(ErrorConstants.duplicateRecord + message);
-    } else {
-      throw Exception(ErrorConstants.authorizedPostErrors + 'unknown error');
+    try {
+      final _response = await dio.post(url, data: body);
+      // Successful responses (2xx) generally don't throw exceptions,
+      // but Dio can be configured to throw for non-2xx codes.
+      // Assuming default behavior where 2xx are not exceptions:
+      if (_response.statusCode == 200 || _response.statusCode == 201) {
+        return _response.data;
+      } else {
+        // This else block might be redundant if Dio throws for non-2xx.
+        // For safety, keeping a generic error for unexpected status codes not caught by DioException.
+        String message = _response.data is Map ? (_response.data['message'] ?? _response.statusMessage ?? 'unknown error') : (_response.statusMessage ?? 'unknown error');
+        throw Exception('${ErrorConstants.authorizedPostErrors}HTTP ${_response.statusCode}: $message');
+      }
+    } on DioException catch (e) {
+      if (e.response != null) {
+        // We have a response from the server, even if it's an error code
+        String message = e.response!.data is Map ? (e.response!.data['message'] ?? e.response!.statusMessage ?? 'Server error') : (e.response!.statusMessage ?? 'Server error');
+        if (e.response!.statusCode == 400) {
+          throw Exception(ErrorConstants.authorizedPostErrors + message);
+        } else if (e.response!.statusCode == 401) {
+          throw Exception(ErrorConstants.authorizedPostErrors + ErrorConstants.invalidBearerToken);
+        } else if (e.response!.statusCode == 404) {
+          throw Exception(ErrorConstants.authorizedPostErrors + message);
+        } else if (e.response!.statusCode == 500) {
+          throw Exception(ErrorConstants.authorizedPostErrors + message);
+        } else if (e.response!.statusCode == 409) {
+          throw Exception(ErrorConstants.duplicateRecord + message);
+        } else {
+          throw Exception('${ErrorConstants.authorizedPostErrors}HTTP ${e.response!.statusCode}: $message');
+        }
+      } else {
+        // Error without a response (network error, timeout, etc.)
+        throw Exception('${ErrorConstants.authorizedPostErrors}${e.message ?? "Network error"}');
+      }
+    } catch (e) {
+      // Catch-all for non-Dio exceptions
+      throw Exception('${ErrorConstants.authorizedPostErrors}Unexpected error: $e');
     }
   }
 
   static Future<dynamic> authorizedPut(
       String url, Map<String, String> headers, dynamic body) async {
     Dio dio = new Dio();
-    dio.options.connectTimeout = DEFAULT_TIMEOUT;
-    dio.options.receiveTimeout = DEFAULT_TIMEOUT;
+    dio.options.connectTimeout = Duration(milliseconds: DEFAULT_TIMEOUT);
+    dio.options.receiveTimeout = Duration(milliseconds: DEFAULT_TIMEOUT);
     dio.options.headers = headers;
-    final _response = await dio.put(url, data: body);
-
-    if (_response.statusCode == 200 || _response.statusCode == 201) {
-      // If server returns an OK response, return the body
-      return _response.data;
-    } else if (_response.statusCode == 400) {
-      // If that response was not OK, throw an error.
-      String message = _response.data['message'] ?? '';
-      throw Exception(ErrorConstants.authorizedPutErrors + message);
-    } else if (_response.statusCode == 401) {
-      throw Exception(ErrorConstants.authorizedPutErrors +
-          ErrorConstants.invalidBearerToken);
-    } else if (_response.statusCode == 404) {
-      String message = _response.data['message'] ?? '';
-      throw Exception(ErrorConstants.authorizedPutErrors + message);
-    } else if (_response.statusCode == 500) {
-      String message = _response.data['message'] ?? '';
-      throw Exception(ErrorConstants.authorizedPutErrors + message);
-    } else {
-      throw Exception(ErrorConstants.authorizedPutErrors + 'unknown error');
+    try {
+      final _response = await dio.put(url, data: body);
+      if (_response.statusCode == 200 || _response.statusCode == 201) {
+        return _response.data;
+      } else {
+        String message = _response.data is Map ? (_response.data['message'] ?? _response.statusMessage ?? 'unknown error') : (_response.statusMessage ?? 'unknown error');
+        throw Exception('${ErrorConstants.authorizedPutErrors}HTTP ${_response.statusCode}: $message');
+      }
+    } on DioException catch (e) {
+      if (e.response != null) {
+        String message = e.response!.data is Map ? (e.response!.data['message'] ?? e.response!.statusMessage ?? 'Server error') : (e.response!.statusMessage ?? 'Server error');
+        if (e.response!.statusCode == 400) {
+          throw Exception(ErrorConstants.authorizedPutErrors + message);
+        } else if (e.response!.statusCode == 401) {
+          throw Exception(ErrorConstants.authorizedPutErrors + ErrorConstants.invalidBearerToken);
+        } else if (e.response!.statusCode == 404) {
+          throw Exception(ErrorConstants.authorizedPutErrors + message);
+        } else if (e.response!.statusCode == 500) {
+          throw Exception(ErrorConstants.authorizedPutErrors + message);
+        } else {
+          throw Exception('${ErrorConstants.authorizedPutErrors}HTTP ${e.response!.statusCode}: $message');
+        }
+      } else {
+        throw Exception('${ErrorConstants.authorizedPutErrors}${e.message ?? "Network error"}');
+      }
+    } catch (e) {
+      throw Exception('${ErrorConstants.authorizedPutErrors}Unexpected error: $e');
     }
   }
 
   static Future<dynamic> authorizedDelete(
       String url, Map<String, String> headers) async {
     Dio dio = new Dio();
-    dio.options.connectTimeout = DEFAULT_TIMEOUT;
-    dio.options.receiveTimeout = DEFAULT_TIMEOUT;
+    dio.options.connectTimeout = Duration(milliseconds: DEFAULT_TIMEOUT);
+    dio.options.receiveTimeout = Duration(milliseconds: DEFAULT_TIMEOUT);
     dio.options.headers = headers;
     try {
       final _response = await dio.delete(url);
       if (_response.statusCode == 200) {
-        // If server returns an OK response, return the body
         return _response.data;
       } else {
-        ///TODO: log this as a bug because the response was bad
-        // If that response was not OK, throw an error.
-        throw Exception('Failed to delete data: ' + _response.data);
+        // This else block might be redundant if Dio throws for non-2xx.
+        String message = _response.data is Map ? (_response.data['message'] ?? _response.statusMessage ?? 'unknown error') : (_response.statusMessage ?? 'unknown error');
+        throw Exception('Failed to delete data: HTTP ${_response.statusCode}: $message');
       }
-    } on TimeoutException catch (err) {
-      print(err);
-    } catch (err) {
-      print('network error');
-      print(err);
-      return null;
+    } on DioException catch (e) {
+      if (e.response != null) {
+        String message = e.response!.data is Map ? (e.response!.data['message'] ?? e.response!.statusMessage ?? 'Server error') : (e.response!.statusMessage ?? 'Server error');
+        throw Exception('Failed to delete data: HTTP ${e.response!.statusCode}: $message');
+      } else if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.sendTimeout || e.type == DioExceptionType.receiveTimeout) {
+        print('Timeout error during delete: ${e.message}');
+        throw Exception('Failed to delete data: Timeout');
+      } else {
+        print('Network error during delete: ${e.message}');
+        throw Exception('Failed to delete data: Network error');
+      }
+    } on TimeoutException catch (err) { // Should be caught by DioException with timeout types, but kept for safety.
+      print('TimeoutException during delete: $err');
+      throw Exception('Failed to delete data: Timeout');
+    } catch (err) { // Catch-all for non-Dio exceptions
+      print('Generic error during delete: $err');
+      throw Exception('Failed to delete data: $err');
     }
   }
 
