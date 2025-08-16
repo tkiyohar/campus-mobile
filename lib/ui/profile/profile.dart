@@ -7,7 +7,7 @@ import 'package:campus_mobile_experimental/ui/common/build_info.dart';
 import 'package:campus_mobile_experimental/ui/profile/login.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:uni_links2/uni_links.dart';
+import 'package:app_links/app_links.dart';
 import '../../core/providers/user.dart';
 import '../../core/utils/webview.dart';
 
@@ -17,11 +17,12 @@ class Profile extends StatelessWidget {
   /// currently, this method handles executing custom map query
   Future<Null> initUniLinks(BuildContext context) async {
     late StreamSubscription _sub;
-    _sub = linkStream.listen((String? link) async {
+    final appLinks = AppLinks();
+    _sub = appLinks.uriLinkStream.listen((Uri uri) async {
       // map query handler
-      if (link!.contains("deeplinking.searchmap")) {
-        var uri = Uri.dataFromString(link);
-        var query = uri.queryParameters['query']!;
+      if (uri.toString().contains("deeplinking.searchmap")) {
+        var uriData = Uri.dataFromString(uri.toString());
+        var query = uriData.queryParameters['query']!;
         // redirect query to maps tab and search with query
         Provider.of<MapsDataProvider>(context, listen: false)
             .searchBarController

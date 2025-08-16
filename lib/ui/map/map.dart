@@ -10,7 +10,7 @@ import 'package:campus_mobile_experimental/ui/map/my_location_button.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
-import 'package:uni_links2/uni_links.dart';
+import 'package:app_links/app_links.dart';
 
 class Maps extends StatelessWidget {
   Widget resultsList(BuildContext context) {
@@ -56,11 +56,12 @@ class Maps extends StatelessWidget {
     // the specific host needs to be added in AndroidManifest.xml and Info.plist
     // currently, this method handles executing custom map query
     late StreamSubscription _sub;
-    _sub = linkStream.listen((String? link) async {
+    final appLinks = AppLinks();
+    _sub = appLinks.uriLinkStream.listen((Uri uri) async {
       // handling for map query
-      if (link!.contains("deeplinking.searchmap")) {
-        var uri = Uri.dataFromString(link);
-        var query = uri.queryParameters['query']!;
+      if (uri.toString().contains("deeplinking.searchmap")) {
+        var uriData = Uri.dataFromString(uri.toString());
+        var query = uriData.queryParameters['query']!;
         // redirect query to maps tab and search with query
         Provider.of<MapsDataProvider>(context, listen: false)
             .searchBarController

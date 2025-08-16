@@ -29,7 +29,7 @@ import 'package:campus_mobile_experimental/ui/student_id/student_id_card.dart';
 import 'package:campus_mobile_experimental/ui/wifi/wifi_card.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:uni_links2/uni_links.dart';
+import 'package:app_links/app_links.dart';
 import 'package:flutter/rendering.dart';
 
 //--- code to track size changes of dynamic web card widget content ---
@@ -124,24 +124,25 @@ class _HomeState extends State<Home> {
     // the specific host needs to be added in AndroidManifest.xml and Info.plist
     // currently, this method handles executing custom map query
     late StreamSubscription _sub;
+    final appLinks = AppLinks();
 
     // Used to handle links on cold app start
-    String? initialLink = await getInitialLink();
+    final initialUri = await appLinks.getInitialLink();
     if (!executedInitialDeeplinkQuery &&
-        initialLink != null &&
-        initialLink.contains("deeplinking.searchmap")) {
-      var uri = Uri.dataFromString(initialLink);
+        initialUri != null &&
+        initialUri.toString().contains("deeplinking.searchmap")) {
+      var uri = Uri.dataFromString(initialUri.toString());
       var query = uri.queryParameters['query']!;
       // redirect query to maps tab and search with query
       executeQuery(query);
     }
 
     // used to handle links while app is in foreground/background
-    _sub = linkStream.listen((String? link) async {
+    _sub = appLinks.uriLinkStream.listen((Uri uri) async {
       // handling for map query
-      if (link!.contains("deeplinking.searchmap")) {
-        var uri = Uri.dataFromString(link);
-        var query = uri.queryParameters['query']!;
+      if (uri.toString().contains("deeplinking.searchmap")) {
+        var uriData = Uri.dataFromString(uri.toString());
+        var query = uriData.queryParameters['query']!;
         // redirect query to maps tab and search with query
         executeQuery(query);
         // received deeplink, cancel stream to prevent memory leaks

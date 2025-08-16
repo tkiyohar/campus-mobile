@@ -11,7 +11,7 @@ import 'package:campus_mobile_experimental/ui/notifications/notifications_filter
 import 'package:flutter/material.dart';
 import 'package:flutter_linkify/flutter_linkify.dart';
 import 'package:provider/provider.dart';
-import 'package:uni_links2/uni_links.dart';
+import 'package:app_links/app_links.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../navigator/bottom.dart';
 
@@ -122,11 +122,12 @@ class _NotificationsListViewState extends State<NotificationsListView> {
     // the specific host needs to be added in AndroidManifest.xml and Info.plist
     // currently, this method handles executing custom map query
     late StreamSubscription _sub;
-    _sub = linkStream.listen((String? link) async {
+    final appLinks = AppLinks();
+    _sub = appLinks.uriLinkStream.listen((Uri uri) async {
       // handling for map query
-      if (link!.contains("deeplinking.searchmap")) {
-        var uri = Uri.dataFromString(link);
-        var query = uri.queryParameters['query']!;
+      if (uri.toString().contains("deeplinking.searchmap")) {
+        var uriData = Uri.dataFromString(uri.toString());
+        var query = uriData.queryParameters['query']!;
         // redirect query to maps tab and search with query
         Provider.of<MapsDataProvider>(context, listen: false)
             .searchBarController
