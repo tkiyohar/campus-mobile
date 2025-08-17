@@ -8,14 +8,15 @@ import 'package:campus_mobile_experimental/core/providers/notifications.dart';
 import 'package:campus_mobile_experimental/core/services/authentication.dart';
 import 'package:campus_mobile_experimental/core/services/user.dart';
 import 'package:campus_mobile_experimental/ui/navigator/bottom.dart';
-import 'package:encrypt/encrypt.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive/hive.dart';
 import 'package:pointycastle/asymmetric/api.dart';
 import 'package:pointycastle/asymmetric/oaep.dart';
+import 'package:pointycastle/asymmetric/rsa.dart';
 import 'package:pointycastle/pointycastle.dart' as pc;
+import 'package:pointycastle/key_parsers/asn1_key_parser.dart';
 import '../../ui/home/home.dart';
 
 class UserDataProvider extends ChangeNotifier {
@@ -116,16 +117,41 @@ class UserDataProvider extends ChangeNotifier {
   /// Delete password from device
   void _deletePasswordFromDevice() => storage.delete(key: 'password');
 
+  /// Parse RSA public key from PEM string
+  RSAPublicKey _parseRSAPublicKeyFromPem(String pemString) {
+    // Remove PEM headers and whitespace
+    final keyString = pemString
+        .replaceAll('-----BEGIN PUBLIC KEY-----', '')
+        .replaceAll('-----END PUBLIC KEY-----', '')
+        .replaceAll('-----BEGIN RSA PUBLIC KEY-----', '')
+        .replaceAll('-----END RSA PUBLIC KEY-----', '')
+        .replaceAll(RegExp(r'\s+'), '');
+    
+    // Decode base64
+    final keyBytes = base64.decode(keyString);
+    
+    // Parse ASN.1 structure
+    final parser = ASN1KeyParser();
+    return parser.parse(keyBytes) as RSAPublicKey;
+  }
+
   /// Encrypt given username and password and store on device
   void _encryptAndSaveCredentials(String username, String password) {
     final pkString = dotenv.get('USER_CREDENTIALS_PUBLIC_KEY');
-    final rsaParser = RSAKeyParser();
-    final pc.RSAPublicKey publicKey = rsaParser.parse(pkString) as RSAPublicKey;
-    var cipher = OAEPEncoding(pc.AsymmetricBlockCipher('RSA'));
-    pc.AsymmetricKeyParameter<pc.RSAPublicKey> keyParametersPublic = new pc.PublicKeyParameter(publicKey);
+    final RSAPublicKey publicKey = _parseRSAPublicKeyFromPem(pkString);
+    
+    // Create RSA engine and OAEP encoding
+    final rsaEngine = RSAEngine();
+    var cipher = OAEPEncoding(rsaEngine);
+    
+    // Initialize cipher for encryption
+    pc.AsymmetricKeyParameter<RSAPublicKey> keyParametersPublic = pc.PublicKeyParameter(publicKey);
     cipher.init(true, keyParametersPublic);
+    
+    // Encrypt password
     Uint8List output = cipher.process(utf8.encode(password));
     var base64EncodedText = base64.encode(output);
+    
     _saveUsernameToDevice(username);
     _saveEncryptedPasswordToDevice(base64EncodedText);
   }
