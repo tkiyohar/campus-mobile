@@ -16,7 +16,7 @@ import 'package:pointycastle/asymmetric/api.dart';
 import 'package:pointycastle/asymmetric/oaep.dart';
 import 'package:pointycastle/asymmetric/rsa.dart';
 import 'package:pointycastle/pointycastle.dart' as pc;
-import 'package:pointycastle/key_parsers/asn1_key_parser.dart';
+import 'package:asn1lib/asn1lib.dart';
 import '../../ui/home/home.dart';
 
 class UserDataProvider extends ChangeNotifier {
@@ -127,12 +127,26 @@ class UserDataProvider extends ChangeNotifier {
         .replaceAll('-----END RSA PUBLIC KEY-----', '')
         .replaceAll(RegExp(r'\s+'), '');
     
-    // Decode base64
+    // Decode base64 to get DER-encoded bytes
     final keyBytes = base64.decode(keyString);
     
-    // Parse ASN.1 structure
-    final parser = ASN1KeyParser();
-    return parser.parse(keyBytes) as RSAPublicKey;
+    // Parse ASN.1 structure using asn1lib
+    final asn1Parser = ASN1Parser(Uint8List.fromList(keyBytes));
+    final topLevelSeq = asn1Parser.nextObject() as ASN1Sequence;
+    
+    // Extract the public key bit string (second element in the sequence)
+    final publicKeyBitString = topLevelSeq.elements![1] as ASN1BitString;
+    
+    // Parse the inner ASN.1 sequence containing modulus and exponent
+    final publicKeyAsn = ASN1Parser(publicKeyBitString.valueBytes());
+    final publicKeySeq = publicKeyAsn.nextObject() as ASN1Sequence;
+    
+    // Extract modulus (first element) and exponent (second element)
+    final modulus = (publicKeySeq.elements![0] as ASN1Integer).integer!;
+    final exponent = (publicKeySeq.elements![1] as ASN1Integer).integer!;
+    
+    // Create and return RSAPublicKey
+    return RSAPublicKey(modulus, exponent);
   }
 
   /// Encrypt given username and password and store on device
