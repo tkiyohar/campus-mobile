@@ -159,7 +159,7 @@ class UserDataProvider extends ChangeNotifier {
     var cipher = OAEPEncoding(rsaEngine);
     
     // Initialize cipher for encryption
-    pc.AsymmetricKeyParameter<RSAPublicKey> keyParametersPublic = pc.PublicKeyParameter(publicKey);
+    final keyParametersPublic = pc.PublicKeyParameter<RSAPublicKey>(publicKey);
     cipher.init(true, keyParametersPublic);
     
     // Encrypt password
