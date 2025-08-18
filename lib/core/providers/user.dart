@@ -142,8 +142,8 @@ class UserDataProvider extends ChangeNotifier {
     final publicKeySeq = publicKeyAsn.nextObject() as ASN1Sequence;
     
     // Extract modulus (first element) and exponent (second element)
-    final modulus = (publicKeySeq.elements![0] as ASN1Integer).value;
-    final exponent = (publicKeySeq.elements![1] as ASN1Integer).value;
+    final modulus = BigInt.from((publicKeySeq.elements![0] as ASN1Integer).intValue);
+    final exponent = BigInt.from((publicKeySeq.elements![1] as ASN1Integer).intValue);
     
     // Create and return RSAPublicKey
     return RSAPublicKey(modulus, exponent);
